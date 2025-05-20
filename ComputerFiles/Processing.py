@@ -14,6 +14,13 @@ def dilate_with_buffer(image, buffer_radius=5):
     kernel = np.ones((buffer_radius, buffer_radius), np.uint8)
     return cv2.dilate(image, kernel, iterations=1)
 
+def calc_angle(x1, y1, x2, y2):
+    angle = np.degrees(np.arctan2(y2-y1, x2-x1))
+    return angle
+
+def calc_distance(x1, y1, x2, y2):
+    return np.sqrt((y2-y1)**2 + (x2-x1)**2)
+
 def bluescale(frame):
     copy = frame.copy()
     hsv_ver = cv2.cvtColor(copy, cv2.COLOR_BGR2HSV)
@@ -30,91 +37,53 @@ def hsv_mask(frame):
     masked = cv2.bitwise_and(frame, frame, mask=mask)
 
     return masked
+    
+def horizontal_detection(frame):
+    new = frame.copy()
 
+    detect_flag = False
 
-def detect_centerline(image, orientation="vertical", buffer_radius=5):
-    blue_segmented= hsv_mask(image)
-    gray = cv2.cvtColor(blue_segmented, cv2.COLOR_BGR2GRAY)
-    blurred = apply_gaussian_blur(gray)
-    edges = canny_edge_detection(blurred)
-    dilated_edges = dilate_with_buffer(edges, buffer_radius)
-
-    line_image = image.copy()
-
-    lines = cv2.HoughLinesP(dilated_edges, 1, np.pi / 180, 100, minLineLength=80, maxLineGap=10)
+    lines = cv2.HoughLinesP(new, 1, np.pi/180, 100, minLineLength=80, maxLineGap=10)
     if lines is not None:
-        relevant_lines = []
+        hori_lines = []
         for line in lines:
             x1, y1, x2, y2 = line[0]
-            if orientation == "vertical" and abs(x2 - x1) < abs(y2 - y1):
-                relevant_lines.append(((x1 + x2) // 2, abs(y2 - y1)))
-            elif orientation == "horizontal" and abs(y2 - y1) < abs(x2 - x1):
-                relevant_lines.append(((y1 + y2) // 2, abs(x2 - x1)))
+            if abs(y2-y1) < abs(x2-x1):
+                hori_lines.append(((y1 + y2) // 2, abs(x2-x1)))
 
-        if relevant_lines:
-            if orientation == "vertical":
-                weighted_sum = sum(x * length for x, length in relevant_lines)
-                total_length = sum(length for _, length in relevant_lines)
-                center_x = int(weighted_sum / total_length) if total_length > 0 else image.shape[1] // 2
-                cv2.line(line_image, (center_x, 0), (center_x, line_image.shape[0]), (0, 0, 255), 2)
-            elif orientation == "horizontal":
-                weighted_sum = sum(y * length for y, length in relevant_lines)
-                total_length = sum(length for _, length in relevant_lines)
-                if total_length > 0:
-                    center_y = int(weighted_sum / total_length)
-                else:
-                    center_y = image.shape[0] // 2
-                cv2.line(line_image, (0, center_y), (line_image.shape[1], center_y), (0, 0, 255), 2)
+        if hori_lines:
+            detect_flag = True
+            weighted_sum = sum(y * length for y, length in hori_lines)
+            total_length = sum(length for _, length in hori_lines)
 
-    return line_image
+            if total_length > 0:
+                center_y = int(weighted_sum / total_length)
+            else: 
+                center_y = frame.shape[0] // 2
+            
+            cv2.line(new, (0, center_y), (new.shape[1], center_y),(0, 0, 255), 2)
+    
+    return detect_flag, new
 
-# Resize function to ensure all frames are the same size
-def resize_frame(frame):
-    return cv2.resize(frame, (1280, 720))
+def vertical_detection(frame):
+    new = frame.copy() 
+    detect_flag = False
 
-# Function to detect orientation of lines (horizontal or vertical)
-def detect_lines_orientation(frame):
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    edges = canny_edge_detection(gray)
-    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, 100, minLineLength=100, maxLineGap=10)
-
-    vertical_lines = 0
-    horizontal_lines = 0
-
-    if lines is not None:
+    x_vals = []
+    lines = cv2.HoughLinesP(new, 1, np.pi/180, 100, minLineLength=80, maxLineGap=10)
+    if lines is not None:    
         for line in lines:
             x1, y1, x2, y2 = line[0]
-            if abs(x2 - x1) < abs(y2 - y1):
-                vertical_lines += 1
-            elif abs(y2 - y1) < abs(x2 - x1):
-                horizontal_lines += 1
+            if abs(y2-y1) > abs(x2-x1):
+                x_vals.append((x1 + x2) // 2)
 
-    if vertical_lines == 0 and horizontal_lines == 0:
-        return None
-    elif vertical_lines > horizontal_lines:
-        return "vertical"
-    else:
-        return "horizontal"
+    if len(x_vals) > 0:
+        mid_x = sum(x_vals) // len(x_vals)
+        cv2.line(new, (mid_x, 0), (mid_x, new.shape[0]), (0, 0, 255), 2)
+        detect_flag = True
 
-# Function to draw parallel lines (vertical or horizontal) on the image
-def draw_parallel_lines(image, orientation="vertical"):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    blurred = apply_gaussian_blur(gray)
-    edges = canny_edge_detection(blurred)
-    dilated_edges = dilate_with_buffer(edges)
-
-    line_image = image.copy()
-
-    lines = cv2.HoughLinesP(dilated_edges, 1, np.pi / 180, 100, minLineLength=100, maxLineGap=10)
-    if lines is not None:
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            if orientation == "vertical" and abs(x2 - x1) < abs(y2 - y1):
-                cv2.line(line_image, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Draw green for vertical lines
-            elif orientation == "horizontal" and abs(y2 - y1) < abs(x2 - x1):
-                cv2.line(line_image, (x1, y1), (x2, y2), (255, 0, 0), 2)  # Draw blue for horizontal lines
-
-    return line_image
+    return detect_flag, new
+    
 
 def post_direction(direction='forward'):
     try:
@@ -125,35 +94,38 @@ def post_direction(direction='forward'):
     except Exception as e:
         print(f'error: {e}')
 
+
 def apply_overlay(frame, movement_queue):
-    new = frame.copy()
+    new = frame.copy() 
+    
+    # first, do martian detection
     martian_frame, existence = martian_detection(new)
     if existence:
-        movement_queue.put(('stop', None))
-        cv2.putText(martian_frame, "WE ARE NOT ALONE", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
+        try:
+            movement_queue.put(('move', ('stop', 0)))
+        except: pass
+        cv2.putText(martian_frame, 'WE ARE NOT ALONE', (10, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
         return martian_frame, None
-
-    cropped = new[130:170, :]
-    blurred = apply_gaussian_blur(cropped)
-    blued = bluescale(blurred)
-    masked = hsv_mask(blued)
-
-    orientation = detect_lines_orientation(masked)
     
-    if orientation == 'horizontal':
-        processed_frame = draw_parallel_lines(masked, orientation="horizontal")
-        processed_frame = detect_centerline(masked, orientation="horizontal")
+    # then, process the image before further line detection
+    blurred = apply_gaussian_blur(new)
+    bluescaled = bluescale(blurred)
+    masked = hsv_mask(bluescaled)
 
+    # now, do horizontal line detection
+    hori_cropped = masked[130:170, :].copy()
+    hori_flag, overlay = horizontal_detection(hori_cropped)
+    if hori_flag:
         movement_queue.put(('horizontal_line_detected', None))
-
-    else:
-        processed_frame = draw_parallel_lines(masked, orientation="vertical")
-        processed_frame = detect_centerline(masked, orientation="vertical")
-
-    new[130:170, :] = processed_frame
-    cv2.rectangle(new, (0, 130), (400, 170), (255, 0, 255), 2)
-
-    return new, orientation
+        return overlay, 'horizontal'
+    
+    # now, if that didnt work, do vertical line detection 
+    vert_flag, overlay = vertical_detection(masked)
+    if vert_flag:
+        return overlay, 'vertical'
+    
+    # now if everything else didn't work, go into a loop of going backwards
+    # then spinning 360 degrees in increments and scanning for a path 
 
 
 def martian_detection(frame):
