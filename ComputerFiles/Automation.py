@@ -9,7 +9,7 @@ import Processing
 import time
 from queue import Queue
 
-url = 'http://192.168.240.24:5000/'
+url = 'http://192.168.240.25:5000/'
 
 class Automation:
     def __init__(self, stream_elem=None, overlay_elem=None):
@@ -111,42 +111,56 @@ class Automation:
 
     def execute_movements(self):
         """Execute movement commands from the queue"""
+        last_command_time = time.time()
+        last_direction = None
+
         while not self.stop_event.is_set():
             try:
                 # If we're paused, wait until unpaused
                 if self.pause_event.is_set():
                     time.sleep(0.1)
                     continue
-                
+
                 try:
                     # Try to get a command from the queue with a timeout of 0.1 seconds
-                    # Using a shorter timeout for more responsiveness
                     command, data = self.movement_queue.get(timeout=0.1)
-                except Exception:
-                    # If queue is empty, stop the robot as requested in point D
-                    self.post_direction('stop')
+                    last_command_time = time.time()  # Reset timer when we get a command
+
+                    # Process the command
+                    if command == 'horizontal_line_detected' and not self.is_executing_sequence:
+                        self.is_executing_sequence = True
+                        self.sequence_start_time = time.time()
+                        self.horizontal_line_sequence()
+                        self.is_executing_sequence = False
+                        print(f"Sequence completed in {time.time() - self.sequence_start_time:.2f} seconds")
+                    elif command == 'move':
+                        direction, duration = data
+                        self.post_direction(direction)
+                        last_direction = direction
+                        if duration > 0:
+                            time.sleep(duration)
+                            # Only stop if not executing a sequence
+                            if not self.is_executing_sequence:
+                                self.post_direction('stop')
+                                last_direction = 'stop'
+
+                    # Mark the command as done
+                    self.movement_queue.task_done()
+
+                except Exception as e:
+                    # Queue is empty - only stop if we've been stopped for a while and we're not
+                    # in a sequence and the last direction wasn't already stop
+                    current_time = time.time()
+                    if (current_time - last_command_time > 3.0 and
+                            not self.is_executing_sequence and
+                            last_direction != 'stop' and
+                            self.automation_active):
+                        self.post_direction('forward')  # Default to moving forward
+                        last_direction = 'forward'
+                        last_command_time = current_time
                     time.sleep(0.1)
                     continue
 
-                # Process the command
-                if command == 'horizontal_line_detected' and not self.is_executing_sequence:
-                    self.is_executing_sequence = True
-                    self.sequence_start_time = time.time()
-                    self.horizontal_line_sequence()
-                    self.is_executing_sequence = False
-                    print(f"Sequence completed in {time.time() - self.sequence_start_time:.2f} seconds")
-                elif command == 'move':
-                    direction, duration = data
-                    self.post_direction(direction)
-                    if duration > 0:
-                        time.sleep(duration)
-                        # Only stop if not executing a sequence
-                        if not self.is_executing_sequence:
-                            self.post_direction('stop')
-
-                # Mark the command as done
-                self.movement_queue.task_done()
-                
             except Exception as e:
                 print(f'Error in movement automation: {e}')
                 time.sleep(0.1)
