@@ -123,10 +123,6 @@ def apply_overlay(frame, movement_queue):
     vert_flag, overlay = vertical_detection(masked)
     if vert_flag:
         return overlay, 'vertical'
-    
-    # now if everything else didn't work, go into a loop of going backwards
-    # then spinning 360 degrees in increments and scanning for a path 
-
 
 def martian_detection(frame):
     existence = False
