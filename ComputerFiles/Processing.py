@@ -43,6 +43,7 @@ def horizontal_detection(frame):
 
     detect_flag = False
 
+    new = cv2.cvtColor(new, cv2.COLOR_BGR2GRAY)
     lines = cv2.HoughLinesP(new, 1, np.pi/180, 100, minLineLength=80, maxLineGap=10)
     if lines is not None:
         hori_lines = []
@@ -70,6 +71,7 @@ def vertical_detection(frame):
     detect_flag = False
 
     x_vals = []
+    new = cv2.cvtColor(new, cv2.COLOR_BGR2GRAY)
     lines = cv2.HoughLinesP(new, 1, np.pi/180, 100, minLineLength=80, maxLineGap=10)
     if lines is not None:    
         for line in lines:
@@ -87,7 +89,7 @@ def vertical_detection(frame):
 
 def post_direction(direction='forward'):
     try:
-        url = 'http://192.168.240.24:5000/'
+        url = 'http://192.168.240.25:5000/'
         endpoint = url + 'moving'
         data = {'direction': direction}
         req = requests.post(endpoint, json=data)
@@ -120,6 +122,7 @@ def apply_overlay(frame, movement_queue):
             movement_queue.put(('horizontal_line_detected', None))
         except: pass
         new[130:170, :] = overlay
+        cv2.rectangle(new, (0, 130), (new.shape[1], 170), (255, 0, 255), 2)
         return new, 'horizontal'
     
     # now, if that didnt work, do vertical line detection 
