@@ -129,7 +129,13 @@ class GUI:
         self.automation = Automation.Automation(self.stream_elem, self.overlay_elem)
         self.video_thread, self.movement_thread = self.automation.start_threads()
 
-    
+    def stop_button_handler(self):
+        if hasattr(self, 'automation'):
+            self.automation.stop_event.set()
+            self.automation.stop_automation()
+            self.post_direction('stop')
+        else:
+            self.post_direction('stop')
     # creates a new tkinter window, and sets up 
     # the frames for video streaming and overlay, 
     # as well as control buttons and log panel. 
@@ -185,8 +191,7 @@ class GUI:
         play = Button(buttons_panel, text='play', font=custom_font, padx=5, pady=7, command = self.play_button)
         play.grid(row=2, column=2, padx=2.5, pady=5, ipadx=5, ipady=5, sticky='we')
 
-        stop = Button(buttons_panel, text='stop', font=custom_font, padx=5, pady=7, 
-                      command=lambda: self.automation.stop_automation() if hasattr(self, 'automation') else self.post_direction('stop'))
+        stop = Button(buttons_panel, text='stop', font=custom_font, padx=5, pady=7, command=self.stop_button_handler)
         stop.grid(row=2, column=3, padx=2.5, pady=5, ipadx=5, ipady=5, sticky='we')
 
         right = Button(buttons_panel, text='move right', font=custom_font, padx=5, pady=7)
