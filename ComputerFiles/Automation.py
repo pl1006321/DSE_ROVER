@@ -24,9 +24,6 @@ class Automation:
         self.line_type_detected = None
         self.automation_active = False
         self.is_executing_sequence = False
-
-        # Counter for alternating turns
-        self.counter = 0
         
         # Debug/logging
         self.last_command = None
@@ -75,7 +72,8 @@ class Automation:
                     time.sleep(0.1)
                     continue
 
-                # Process frame
+                # Process frame using Processing.apply_overlay
+                # This is the key connection between Automation.py and Processing.py
                 overlay, line_type = Processing.apply_overlay(stream, self.movement_queue)
 
                 # Handle line type detection
@@ -89,22 +87,23 @@ class Automation:
                         self.movement_queue.put(('horizontal_line_detected', None))
 
                 # Resize and convert images for display
-                stream = cv2.resize(stream, (400, 300))
-                overlay = cv2.resize(overlay, (400, 300))
-                stream = cv2.cvtColor(stream, cv2.COLOR_BGR2RGB)
-                overlay = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
+                if overlay is not None:
+                    stream = cv2.resize(stream, (400, 300))
+                    overlay = cv2.resize(overlay, (400, 300))
+                    stream = cv2.cvtColor(stream, cv2.COLOR_BGR2RGB)
+                    overlay = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
 
-                # Update UI elements
-                stream_img = ImageTk.PhotoImage(Image.fromarray(stream))
-                overlay_img = ImageTk.PhotoImage(Image.fromarray(overlay))
+                    # Update UI elements
+                    stream_img = ImageTk.PhotoImage(Image.fromarray(stream))
+                    overlay_img = ImageTk.PhotoImage(Image.fromarray(overlay))
 
-                if self.stream_elem.winfo_exists() and self.overlay_elem.winfo_exists():
-                    self.stream_elem.imgtk = stream_img
-                    self.stream_elem.configure(image=stream_img)
-                    self.overlay_elem.imgtk = overlay_img
-                    self.overlay_elem.configure(image=overlay_img)
-                else:
-                    break
+                    if self.stream_elem and self.overlay_elem and self.stream_elem.winfo_exists() and self.overlay_elem.winfo_exists():
+                        self.stream_elem.imgtk = stream_img
+                        self.stream_elem.configure(image=stream_img)
+                        self.overlay_elem.imgtk = overlay_img
+                        self.overlay_elem.configure(image=overlay_img)
+                    else:
+                        break
                     
             except Exception as e:
                 print(f'Error in video stream: {e}')
@@ -120,13 +119,13 @@ class Automation:
                     continue
                 
                 try:
-                    # Try to get a command from the queue with a timeout
-                    command, data = self.movement_queue.get(timeout=0.5)
+                    # Try to get a command from the queue with a timeout of 0.1 seconds
+                    # Using a shorter timeout for more responsiveness
+                    command, data = self.movement_queue.get(timeout=0.1)
                 except Exception:
-                    # If queue is empty and automation is active but not executing a sequence,
-                    # ensure the robot continues moving forward
-                    if self.automation_active and not self.is_executing_sequence:
-                        self.post_direction('forward')
+                    # If queue is empty, stop the robot as requested in point D
+                    self.post_direction('stop')
+                    time.sleep(0.1)
                     continue
 
                 # Process the command
@@ -139,10 +138,11 @@ class Automation:
                 elif command == 'move':
                     direction, duration = data
                     self.post_direction(direction)
-                    time.sleep(duration)
-                    # Only stop if not executing a sequence
-                    if not self.is_executing_sequence:
-                        self.post_direction('stop')
+                    if duration > 0:
+                        time.sleep(duration)
+                        # Only stop if not executing a sequence
+                        if not self.is_executing_sequence:
+                            self.post_direction('stop')
 
                 # Mark the command as done
                 self.movement_queue.task_done()
@@ -179,10 +179,46 @@ class Automation:
         self.clear_queue()
         self.post_direction('stop')
 
+    def check_vertical_path(self):
+        """Check if there's a valid vertical line in current view"""
+        try:
+            # Get frame from API
+            response = requests.get(url + 'vidstream')
+            b64_image = response.json().get('frame')
+            if not b64_image:
+                return False
+
+            # Decode image
+            decoded_img = base64.b64decode(b64_image)
+            np_image = np.frombuffer(decoded_img, dtype=np.uint8)
+            frame = cv2.imdecode(np_image, cv2.IMREAD_COLOR)
+            
+            if frame is None:
+                return False
+
+            # Process the frame to detect vertical lines
+            # Prepare the frame similar to how Processing.apply_overlay does it
+            blurred = Processing.apply_gaussian_blur(frame)
+            bluescaled = Processing.bluescale(blurred)
+            masked = Processing.hsv_mask(bluescaled)
+            
+            # Use Processing's vertical_detection function
+            vertical_flag, _ = Processing.vertical_detection(masked)
+            
+            return vertical_flag
+            
+        except Exception as e:
+            print(f'Error checking vertical path: {e}')
+            return False
+
     def horizontal_line_sequence(self):
-        """Execute the horizontal line turning sequence"""
-        self.counter += 1
-        
+        """
+        Execute the horizontal line sequence with path detection:
+        1. Stop and move forward a bit
+        2. Turn left and check for vertical path
+        3. If no path on left, turn right and check
+        4. If no path on right, center and continue
+        """
         # Stop movement
         self.post_direction('stop')
         time.sleep(0.3)
@@ -195,29 +231,58 @@ class Automation:
         self.post_direction('stop')
         time.sleep(0.3)
 
-        # Turn alternating left/right
-        if self.counter % 2 == 0:  # Turn right on even counts
-            print(f"Turning right (counter={self.counter})")
-            self.post_direction('right')
-            time.sleep(1.24)
-        else:  # Turn left on odd counts
-            print(f"Turning left (counter={self.counter})")
-            self.post_direction('left')
-            time.sleep(1.4)
-
-        # Stop after turning
-        self.post_direction('stop')
-        time.sleep(0.3)
-
-        # Move forward again
-        self.post_direction('forward')
-        time.sleep(1.2)
-
-        # Final stop
-        self.post_direction('stop')
-        time.sleep(1.0)
+        # First try turning left and check for path
+        print("Turning left to check for vertical path")
+        self.post_direction('left')
+        time.sleep(1.4)  # Full left turn
         
-        # Resume forward movement
+        # Stop to check for vertical line
+        self.post_direction('stop')
+        time.sleep(0.5)
+        
+        # Check if there's a vertical path on the left
+        left_path_valid = self.check_vertical_path()
+        
+        if left_path_valid:
+            print("Valid vertical path found on the left")
+            # Move forward on this path
+            self.post_direction('forward')
+            time.sleep(1.2)
+        else:
+            # No path on left, try turning right
+            print("No vertical path on left, checking right")
+            self.post_direction('right')
+            time.sleep(2.8)  # Need to turn from full left to full right
+            
+            # Stop to check for vertical path
+            self.post_direction('stop')
+            time.sleep(0.5)
+            
+            # Check if there's a vertical path on the right
+            right_path_valid = self.check_vertical_path()
+            
+            if right_path_valid:
+                print("Valid vertical path found on the right")
+                # Move forward on this path
+                self.post_direction('forward')
+                time.sleep(1.2)
+            else:
+                # No path found on either side, return to center
+                print("No vertical paths found, returning to center")
+                self.post_direction('left')
+                time.sleep(1.4)  # Turn from right to center
+                
+                # Move forward from center
+                self.post_direction('stop')
+                time.sleep(0.3)
+                self.post_direction('forward')
+                time.sleep(1.2)
+        
+        # Final stop at the end of sequence
+        self.post_direction('stop')
+        time.sleep(0.5)
+        
+        # Resume normal forward movement if automation is still active
         if self.automation_active:
             self.post_direction('forward')
 
@@ -235,7 +300,7 @@ class Automation:
             req = requests.post(endpoint, json=data)
 
             # If stopping, clear the movement queue
-            if direction == 'stop':
+            if direction == 'stop' and not self.is_executing_sequence:
                 self.clear_queue()
                 
         except Exception as e:
