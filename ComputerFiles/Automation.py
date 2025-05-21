@@ -24,7 +24,7 @@ class Automation:
         self.line_type_detected = None
         self.automation_active = False
         self.is_executing_sequence = False
-        
+
         # Debug/logging
         self.last_command = None
         self.sequence_start_time = None
@@ -35,7 +35,7 @@ class Automation:
         self.stop_event.clear()
         self.pause_event.clear()
         self.automation_active = True
-        
+
         # Start video processing thread
         video_thread = threading.Thread(target=self.update_vid_stream)
         video_thread.daemon = True
@@ -45,10 +45,10 @@ class Automation:
         movement_thread = threading.Thread(target=self.execute_movements)
         movement_thread.daemon = True
         movement_thread.start()
-        
+
         # Initiate movement
         self.start_automation()
-        
+
         return video_thread, movement_thread
 
     def update_vid_stream(self):
@@ -60,7 +60,7 @@ class Automation:
                 b64_image = response.json().get('frame')
                 if not b64_image:
                     print('Received empty frame from API')
-                    time.sleep(0.1)
+                    time.sleep(0.01)
                     continue
 
                 # Decode image
@@ -69,8 +69,38 @@ class Automation:
                 stream = cv2.imdecode(np_image, cv2.IMREAD_COLOR)
                 if stream is None:
                     print('Failed to decode image')
-                    time.sleep(0.1)
+                    time.sleep(0.01)
                     continue
+
+                obstacle_detected = self.ultrasonic()
+                if obstacle_detected:
+                    overlay = stream.copy()
+                    cv2.putText(overlay, 'OBSTACLE DETECTED', (10, 50),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+                    if not self.is_executing_sequence:
+                        print('obstacle detected! starting avoidance sequence...')
+                        self.movement_queue(('obstacle detected', None))
+
+                    stream = cv2.resize(stream, (400, 300))
+                    overlay = cv2.resize(overlay, (400, 300))
+                    stream = cv2.cvtColor(stream, cv2.COLOR_BGR2RGB)
+                    overlay = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
+
+                    stream_img = ImageTk.PhotoImage(Image.fromarray(stream))
+                    overlay_img = ImageTk.PhotoImage(Image.fromarray(overlay))
+
+                    if self.stream_elem and self.overlay_elem:
+                        self.stream_elem.imgtk = stream_img
+                        self.stream_elem.configure(image=stream_img)
+                        self.overlay_elem.imgtk = overlay_img
+                        self.overlay_elem.configure(image=overlay_img)
+                    else:
+                        break
+
+                    time.sleep(0.01)
+                    continue
+
 
                 # Process frame using Processing.apply_overlay
                 # This is the key connection between Automation.py and Processing.py
@@ -80,7 +110,7 @@ class Automation:
                 if line_type != self.line_type_detected:
                     self.line_type_detected = line_type
                     print(f'Line type detected: {line_type}')
-                    
+
                     # If horizontal line detected and automation is active, queue sequence
                     if self.automation_active and line_type == 'horizontal' and not self.is_executing_sequence:
                         print('Horizontal line detected! Queueing sequence...')
@@ -104,10 +134,10 @@ class Automation:
                         self.overlay_elem.configure(image=overlay_img)
                     else:
                         break
-                    
+
             except Exception as e:
                 print(f'Error in video stream: {e}')
-                time.sleep(0.1)
+                time.sleep(0.01)
 
     def execute_movements(self):
         """Execute movement commands from the queue"""
@@ -118,7 +148,7 @@ class Automation:
             try:
                 # If we're paused, wait until unpaused
                 if self.pause_event.is_set():
-                    time.sleep(0.1)
+                    time.sleep(0.01)
                     continue
 
                 try:
@@ -158,12 +188,12 @@ class Automation:
                         self.post_direction('forward')  # Default to moving forward
                         last_direction = 'forward'
                         last_command_time = current_time
-                    time.sleep(0.1)
+                    time.sleep(0.01)
                     continue
 
             except Exception as e:
                 print(f'Error in movement automation: {e}')
-                time.sleep(0.1)
+                time.sleep(0.01)
 
     def start_automation(self):
         """Start automated movement"""
@@ -178,7 +208,7 @@ class Automation:
         print("Pausing automation...")
         self.pause_event.set()
         self.post_direction('stop')
-        
+
     def resume_automation(self):
         """Resume automation after pausing"""
         print("Resuming automation...")
@@ -206,7 +236,7 @@ class Automation:
             decoded_img = base64.b64decode(b64_image)
             np_image = np.frombuffer(decoded_img, dtype=np.uint8)
             frame = cv2.imdecode(np_image, cv2.IMREAD_COLOR)
-            
+
             if frame is None:
                 return False
 
@@ -215,12 +245,12 @@ class Automation:
             blurred = Processing.apply_gaussian_blur(frame)
             bluescaled = Processing.bluescale(blurred)
             masked = Processing.hsv_mask(bluescaled)
-            
+
             # Use Processing's vertical_detection function
             vertical_flag, _ = Processing.vertical_detection(masked)
-            
+
             return vertical_flag
-            
+
         except Exception as e:
             print(f'Error checking vertical path: {e}')
             return False
@@ -249,14 +279,14 @@ class Automation:
         print("Turning left to check for vertical path")
         self.post_direction('left')
         time.sleep(1.4)  # Full left turn
-        
+
         # Stop to check for vertical line
         self.post_direction('stop')
         time.sleep(0.5)
-        
+
         # Check if there's a vertical path on the left
         left_path_valid = self.check_vertical_path()
-        
+
         if left_path_valid:
             print("Valid vertical path found on the left")
             # Move forward on this path
@@ -267,14 +297,14 @@ class Automation:
             print("No vertical path on left, checking right")
             self.post_direction('right')
             time.sleep(2.8)  # Need to turn from full left to full right
-            
+
             # Stop to check for vertical path
             self.post_direction('stop')
             time.sleep(0.5)
-            
+
             # Check if there's a vertical path on the right
             right_path_valid = self.check_vertical_path()
-            
+
             if right_path_valid:
                 print("Valid vertical path found on the right")
                 # Move forward on this path
@@ -285,17 +315,17 @@ class Automation:
                 print("No vertical paths found, returning to center")
                 self.post_direction('left')
                 time.sleep(1.4)  # Turn from right to center
-                
+
                 # Move forward from center
                 self.post_direction('stop')
                 time.sleep(0.3)
                 self.post_direction('forward')
                 time.sleep(1.2)
-        
+
         # Final stop at the end of sequence
         self.post_direction('stop')
         time.sleep(0.5)
-        
+
         # Resume normal forward movement if automation is still active
         if self.automation_active:
             self.post_direction('forward')
@@ -307,7 +337,7 @@ class Automation:
             if self.last_command != direction:
                 print(f"Sending command: {direction}")
                 self.last_command = direction
-                
+
             # Send command to robot
             endpoint = url + 'moving'
             data = {'direction': direction}
@@ -316,7 +346,7 @@ class Automation:
             # If stopping, clear the movement queue
             if direction == 'stop' and not self.is_executing_sequence:
                 self.clear_queue()
-                
+
         except Exception as e:
             print(f'Error posting to API: {e}')
 
