@@ -119,6 +119,14 @@ def video_stream():
         b64_image = base64.b64encode(buffer).decode('utf-8')
         return jsonify({'frame': b64_image})
 
+@app.route('/obstacle_status', methods=['GET'])
+def get_obstacle_status():
+    distance = motor.get_distance()
+    return jsonify({
+        'detect_flag': distance
+    })
+
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)  # runs api
