@@ -30,8 +30,8 @@ def bluescale(frame):
 def hsv_mask(frame):
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-    lower_blue = np.array([100, 50, 50])
-    upper_blue = np.array([140, 255, 255])
+    lower_blue = np.array([0, 0, 200])
+    upper_blue = np.array([255, 255, 255])
     mask = cv2.inRange(hsv, lower_blue, upper_blue)
 
     masked = cv2.bitwise_and(frame, frame, mask=mask)
@@ -43,8 +43,7 @@ def horizontal_detection(frame):
 
     detect_flag = False
 
-    new = cv2.cvtColor(new, cv2.COLOR_BGR2GRAY)
-    lines = cv2.HoughLinesP(new, 1, np.pi/180, 100, minLineLength=80, maxLineGap=10)
+    lines = cv2.HoughLinesP(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), 1, np.pi/180, 100, minLineLength=80, maxLineGap=10)
     if lines is not None:
         hori_lines = []
         for line in lines:
@@ -71,8 +70,7 @@ def vertical_detection(frame):
     detect_flag = False
 
     x_vals = []
-    new = cv2.cvtColor(new, cv2.COLOR_BGR2GRAY)
-    lines = cv2.HoughLinesP(new, 1, np.pi/180, 100, minLineLength=80, maxLineGap=10)
+    lines = cv2.HoughLinesP(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), 1, np.pi/180, 100, minLineLength=80, maxLineGap=10)
     if lines is not None:    
         for line in lines:
             x1, y1, x2, y2 = line[0]
