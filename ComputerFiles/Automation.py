@@ -51,6 +51,16 @@ class Automation:
 
         return video_thread, movement_thread
 
+    def check_obstacles(self):
+        try:
+            response = requests.get(url + 'obstacle')
+            data = response.json()
+            return data.get('obstacle_detected', False)
+        except Exception as e:
+            print(f'error checking obstacles: {e}')
+            return False
+
+
     def update_vid_stream(self):
         """Process video stream and detect features"""
         while not self.stop_event.is_set():
@@ -72,7 +82,7 @@ class Automation:
                     time.sleep(0.01)
                     continue
 
-                obstacle_detected = self.ultrasonic()
+                obstacle_detected = self.check_obstacles()
                 if obstacle_detected:
                     overlay = stream.copy()
                     cv2.putText(overlay, 'OBSTACLE DETECTED', (10, 50),
@@ -80,7 +90,7 @@ class Automation:
 
                     if not self.is_executing_sequence:
                         print('obstacle detected! starting avoidance sequence...')
-                        self.movement_queue(('obstacle detected', None))
+                        self.movement_queue.put(('obstacle_detected', None))
 
                     stream = cv2.resize(stream, (400, 300))
                     overlay = cv2.resize(overlay, (400, 300))
@@ -139,6 +149,79 @@ class Automation:
                 print(f'Error in video stream: {e}')
                 time.sleep(0.01)
 
+    def obstacle_avoidance_sequence(self):
+        """
+        Execute obstacle avoidance sequence:
+        1. Move backward a small increment
+        2. Check paths by turning left and right
+        3. Repeat up to 3 times if no path found
+        4. Stop completely if no viable path
+        """
+        attempts = 0
+        path_found = False
+
+        # First, stop any current movement
+        self.post_direction('stop')
+        time.sleep(0.3)
+
+        while attempts < 3 and not path_found and not self.stop_event.is_set():
+            print(f"Obstacle avoidance attempt {attempts + 1}/3")
+
+            # Move backward
+            self.post_direction('backward')
+            time.sleep(1.0)  # Adjust time as needed
+            self.post_direction('stop')
+            time.sleep(0.3)
+
+            # Check left path
+            print("Checking left path...")
+            self.post_direction('left')
+            time.sleep(1.4)  # Full left turn
+            self.post_direction('stop')
+            time.sleep(0.5)
+
+            # Check if path is clear on the left
+            if not self.check_obstacles():
+                print("Clear path found on the left")
+                path_found = True
+                self.post_direction('forward')
+                time.sleep(1.2)
+                break
+
+            # Check right path
+            print("No path on left, checking right...")
+            self.post_direction('right')
+            time.sleep(2.8)  # Full right turn from left position
+            self.post_direction('stop')
+            time.sleep(0.5)
+
+            # Check if path is clear on the right
+            if not self.check_obstacles():
+                print("Clear path found on the right")
+                path_found = True
+                self.post_direction('forward')
+                time.sleep(1.2)
+                break
+
+            # Return to center and try again
+            print("No path on right either, returning to center")
+            self.post_direction('left')
+            time.sleep(1.4)  # Turn from right to center
+            self.post_direction('stop')
+            time.sleep(0.3)
+
+            attempts += 1
+
+        # Final decision
+        if not path_found:
+            print("No viable path found after 3 attempts, stopping automation")
+            self.post_direction('stop')
+            self.automation_active = False
+        else:
+            print("Path found, resuming forward movement")
+            if self.automation_active:
+                self.post_direction('forward')
+
     def execute_movements(self):
         """Execute movement commands from the queue"""
         last_command_time = time.time()
@@ -157,7 +240,14 @@ class Automation:
                     last_command_time = time.time()  # Reset timer when we get a command
 
                     # Process the command
-                    if command == 'horizontal_line_detected' and not self.is_executing_sequence:
+                    if command == 'obstacle_detected' and not self.is_executing_sequence:
+                        self.is_executing_sequence = True
+                        self.sequence_start_time = time.time()
+                        self.obstacle_avoidance_sequence()  # This matches your existing method name
+                        self.is_executing_sequence = False
+                        print(
+                            f"Obstacle avoidance sequence completed in {time.time() - self.sequence_start_time:.2f} seconds")
+                    elif command == 'horizontal_line_detected' and not self.is_executing_sequence:
                         self.is_executing_sequence = True
                         self.sequence_start_time = time.time()
                         self.horizontal_line_sequence()
