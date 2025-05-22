@@ -3,23 +3,29 @@ import numpy as np
 import time
 import requests
 
+
 # Functions that use the basic OpenCv functions to help detect things within the image
 def apply_gaussian_blur(image, kernel_size=(9, 9)):
     return cv2.GaussianBlur(image, kernel_size, 0)
 
+
 def canny_edge_detection(image, low_threshold=150, high_threshold=200):
     return cv2.Canny(image, low_threshold, high_threshold)
+
 
 def dilate_with_buffer(image, buffer_radius=5):
     kernel = np.ones((buffer_radius, buffer_radius), np.uint8)
     return cv2.dilate(image, kernel, iterations=1)
 
+
 def calc_angle(x1, y1, x2, y2):
-    angle = np.degrees(np.arctan2(y2-y1, x2-x1))
+    angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
     return angle
 
+
 def calc_distance(x1, y1, x2, y2):
-    return np.sqrt((y2-y1)**2 + (x2-x1)**2)
+    return np.sqrt((y2 - y1) ** 2 + (x2 - x1) ** 2)
+
 
 def bluescale(frame):
     copy = frame.copy()
@@ -27,22 +33,25 @@ def bluescale(frame):
     hsv_ver[:, :, 0] = 120
     return cv2.cvtColor(hsv_ver, cv2.COLOR_HSV2BGR)
 
+
 def hsv_mask(frame):
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-    lower_blue = np.array([0, 0, 200])
-    upper_blue = np.array([255, 255, 255])
-    mask = cv2.inRange(hsv, lower_blue, upper_blue)
+    lower = np.array([0, 0, 150])
+    upper = np.array([180, 170, 255])
+    mask = cv2.inRange(hsv, lower, upper)
 
     masked = cv2.bitwise_and(frame, frame, mask=mask)
 
     return masked
 
+
 def closing(masked, full):
     gray = cv2.cvtColor(masked, cv2.COLOR_BGR2GRAY)
-    closing = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8), iterations=2)
+    closing = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8), iterations=3)
     final = cv2.bitwise_and(masked, full, mask=closing)
     return final
+
 
 def polyfit_line(points):
     try:
@@ -53,19 +62,20 @@ def polyfit_line(points):
     except:
         return None
 
-    
+
 def horizontal_detection(frame):
     new = frame.copy()
 
     detect_flag = False
 
-    lines = cv2.HoughLinesP(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), 1, np.pi/180, 100, minLineLength=80, maxLineGap=10)
+    lines = cv2.HoughLinesP(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), 1, np.pi / 180, 100, minLineLength=80,
+                            maxLineGap=10)
     if lines is not None:
         hori_lines = []
         for line in lines:
             x1, y1, x2, y2 = line[0]
-            if abs(y2-y1) < abs(x2-x1):
-                hori_lines.append(((y1 + y2) // 2, abs(x2-x1)))
+            if abs(y2 - y1) < abs(x2 - x1):
+                hori_lines.append(((y1 + y2) // 2, abs(x2 - x1)))
 
         if hori_lines:
             detect_flag = True
@@ -74,66 +84,67 @@ def horizontal_detection(frame):
 
             if total_length > 0:
                 center_y = int(weighted_sum / total_length)
-            else: 
+            else:
                 center_y = frame.shape[0] // 2
-            
-            cv2.line(new, (0, center_y), (new.shape[1], center_y),(0, 0, 255), 2)
-    
+
+            cv2.line(new, (0, center_y), (new.shape[1], center_y), (0, 0, 255), 2)
+
     return detect_flag, new
 
+
 def vertical_detection(frame):
-    new = frame.copy() 
+    new = frame.copy()
     detect_flag = False
 
     leftline = []
     rightline = []
-    lines = cv2.HoughLinesP(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), 1, np.pi/180, 100, minLineLength=80, maxLineGap=10)
+    lines = cv2.HoughLinesP(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), 1, np.pi / 180, 100, minLineLength=80,
+                            maxLineGap=10)
     if lines is not None:
         for line in lines:
             x1, y1, x2, y2 = line[0]
-            if not abs(y2-y1) > abs(x2-x1):
+            if not abs(y2 - y1) > abs(x2 - x1):
                 return detect_flag, new
             if x2 - x1 != 0:
-                if (y2-y1)/(x2-x1) > 0:
+                if (y2 - y1) / (x2 - x1) > 0:
                     leftline.append([x1, y1, x2, y2])
                 else:
                     rightline.append([x1, y1, x2, y2])
 
     if len(leftline) < 1 or len(rightline) < 1:
         return detect_flag, new
-    
+
     leftline = np.array(leftline)
     rightline = np.array(rightline)
 
     leftline = polyfit_line(leftline)
-    rightline = polyfit_line(rightline) 
+    rightline = polyfit_line(rightline)
 
     if leftline is None or rightline is None:
         return detect_flag, new
-    
+
     l_x1, l_y1, l_x2, l_y2 = leftline
     r_x1, r_y1, r_x2, r_y2 = rightline
 
     cv2.line(new, (l_x1, l_y1), (l_x2, l_y2), (0, 0, 255), 3)
     cv2.line(new, (r_x1, r_y1), (r_x2, r_y2), (0, 0, 255), 3)
 
-
     if calc_distance(l_x1, l_y1, r_x1, r_y1) < calc_distance(l_x1, l_y1, r_x2, r_y2):
-        mid_x1 = (l_x1 + r_x1)//2 
-        mid_y1 = (l_y1 + r_y1)//2
-        mid_x2 = (l_x2 + r_x2)//2
-        mid_y2 = (l_y2 + r_y2)//2
+        mid_x1 = (l_x1 + r_x1) // 2
+        mid_y1 = (l_y1 + r_y1) // 2
+        mid_x2 = (l_x2 + r_x2) // 2
+        mid_y2 = (l_y2 + r_y2) // 2
     else:
-        mid_x1 = (l_x1 + r_x2)//2
-        mid_y1 = (l_y1 + r_y2)//2
-        mid_x2 = (l_x2 + r_x1)//2
-        mid_y2 = (l_y2 + r_y1)//2
-    
+        mid_x1 = (l_x1 + r_x2) // 2
+        mid_y1 = (l_y1 + r_y2) // 2
+        mid_x2 = (l_x2 + r_x1) // 2
+        mid_y2 = (l_y2 + r_y1) // 2
+
     cv2.line(new, (mid_x1, mid_y1), (mid_x2, mid_y2), (0, 0, 255), 3)
     detect_flag = True
 
     return detect_flag, new
-    
+
 
 def post_direction(direction='forward'):
     try:
@@ -146,17 +157,19 @@ def post_direction(direction='forward'):
 
 
 def apply_overlay(frame, movement_queue):
-    new = frame.copy() 
-    
+    new = frame.copy()
+
     # first, do martian detection
     martian_frame, existence = martian_detection(new)
     if existence:
         try:
             movement_queue.put(('move', ('stop', 0)))
-        except: pass
-        cv2.putText(martian_frame, 'WE ARE NOT ALONE', (10, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
+        except:
+            pass
+        cv2.putText(martian_frame, 'WE ARE NOT ALONE', (10, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2,
+                    cv2.LINE_AA)
         return martian_frame, None
-    
+
     # then, process the image before further line detection
     blurred = apply_gaussian_blur(new)
     bluescaled = bluescale(blurred)
@@ -169,16 +182,17 @@ def apply_overlay(frame, movement_queue):
     if hori_flag:
         try:
             movement_queue.put(('horizontal_line_detected', None))
-        except: pass
+        except:
+            pass
         new[130:170, :] = overlay
         cv2.rectangle(new, (0, 130), (new.shape[1], 170), (255, 0, 255), 2)
         return new, 'horizontal'
-    
-    # now, if that didnt work, do vertical line detection 
+
+    # now, if that didnt work, do vertical line detection
     vert_flag, overlay = vertical_detection(closed)
     if vert_flag:
         return overlay, 'vertical'
-    
+
     return new, None
 
 
