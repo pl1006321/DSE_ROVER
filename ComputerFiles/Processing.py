@@ -37,6 +37,16 @@ def hsv_mask(frame):
     masked = cv2.bitwise_and(frame, frame, mask=mask)
 
     return masked
+
+def polyfit_line(points):
+    try:
+        slope, intercept = np.polyfit(points[:, 0], points[:, 1], 1)
+        x1, x2 = min(points[:, 0]), max(points[:, 0])
+        y1, y2 = (slope * x1 + intercept), (slope * x2 + intercept)
+        return [x1, y1, x2, y2]
+    except:
+        return None
+
     
 def horizontal_detection(frame):
     new = frame.copy()
@@ -69,18 +79,52 @@ def vertical_detection(frame):
     new = frame.copy() 
     detect_flag = False
 
-    x_vals = []
+    leftline = []
+    rightline = []
     lines = cv2.HoughLinesP(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), 1, np.pi/180, 100, minLineLength=80, maxLineGap=10)
-    if lines is not None:    
+    if lines is not None:
         for line in lines:
             x1, y1, x2, y2 = line[0]
-            if abs(y2-y1) > abs(x2-x1):
-                x_vals.append((x1 + x2) // 2)
+            if not abs(y2-y1) > abs(x2-x1):
+                return detect_flag, new
+            if x2 - x1 != 0:
+                if (y2-y1)/(x2-x1) > 0:
+                    leftline.append([x1, y1, x2, y2])
+                else:
+                    rightline.append([x1, y1, x2, y2])
 
-    if len(x_vals) > 0:
-        mid_x = sum(x_vals) // len(x_vals)
-        cv2.line(new, (mid_x, 0), (mid_x, new.shape[0]), (0, 0, 255), 2)
-        detect_flag = True
+    if len(leftline) < 1 or len(rightline) < 1:
+        return detect_flag, new
+    
+    leftline = np.array(leftline)
+    rightline = np.array(rightline)
+
+    leftline = polyfit_line(leftline)
+    rightline = polyfit_line(rightline) 
+
+    if leftline is None or rightline is None:
+        return detect_flag, new
+    
+    l_x1, l_y1, l_x2, l_y2 = leftline
+    r_x1, r_y1, r_x2, r_y2 = rightline
+
+    cv2.line(new, (l_x1, l_y1), (l_x2, l_y2), (0, 0, 255), 3)
+    cv2.line(new, (r_x1, r_y1), (r_x2, r_y2), (0, 0, 255), 3)
+
+
+    if calc_distance(l_x1, l_y1, r_x1, r_y1) < calc_distance(l_x1, l_y1, r_x2, r_y2):
+        mid_x1 = (l_x1 + r_x1)//2 
+        mid_y1 = (l_y1 + r_y1)//2
+        mid_x2 = (l_x2 + r_x2)//2
+        mid_y2 = (l_y2 + r_y2)//2
+    else:
+        mid_x1 = (l_x1 + r_x2)//2
+        mid_y1 = (l_y1 + r_y2)//2
+        mid_x2 = (l_x2 + r_x1)//2
+        mid_y2 = (l_y2 + r_y1)//2
+    
+    cv2.line(new, (mid_x1, mid_y1), (mid_x2, mid_y2), (0, 0, 255), 3)
+    detect_flag = True
 
     return detect_flag, new
     
