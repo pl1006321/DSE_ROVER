@@ -38,6 +38,12 @@ def hsv_mask(frame):
 
     return masked
 
+def closing(masked, full):
+    gray = cv2.cvtColor(masked, cv2.COLOR_BGR2GRAY)
+    closing = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8), iterations=2)
+    final = cv2.bitwise_and(masked, full, mask=closing)
+    return final
+
 def polyfit_line(points):
     try:
         slope, intercept = np.polyfit(points[:, 0], points[:, 1], 1)
@@ -155,9 +161,10 @@ def apply_overlay(frame, movement_queue):
     blurred = apply_gaussian_blur(new)
     bluescaled = bluescale(blurred)
     masked = hsv_mask(bluescaled)
+    closed = closing(masked, new)
 
     # now, do horizontal line detection
-    hori_cropped = masked[130:170, :].copy()
+    hori_cropped = closed[130:170, :].copy()
     hori_flag, overlay = horizontal_detection(hori_cropped)
     if hori_flag:
         try:
@@ -168,7 +175,7 @@ def apply_overlay(frame, movement_queue):
         return new, 'horizontal'
     
     # now, if that didnt work, do vertical line detection 
-    vert_flag, overlay = vertical_detection(masked)
+    vert_flag, overlay = vertical_detection(closed)
     if vert_flag:
         return overlay, 'vertical'
     
