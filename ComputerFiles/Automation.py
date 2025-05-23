@@ -1,3 +1,82 @@
+"""
+
+FUNCTIONS:
+1. __init__(stream_elem, overlay_elem)
+   INPUT: stream_elem (UI element for video stream), overlay_elem (UI element for overlay)
+   OUTPUT: Initialized Automation object
+  SUMMARY: Initializes automation system with UI elements, threading components, and state variables
+
+2. start_threads()
+   INPUT: None
+   OUTPUT: video_thread, movement_thread (threading objects)
+   SUMMARY: Starts video processing and movement execution threads, initiates automation
+
+3. check_obstacles()
+   INPUT: None
+   OUTPUT: Boolean (True if obstacle detected, False otherwise)
+   SUMMARY: Queries robot API to check if obstacles are detected by sensors
+
+4. update_vid_stream()
+   INPUT: None
+   OUTPUT: None (continuous loop)
+   SUMMARY: Continuously processes video stream, detects features, handles obstacles, updates UI
+
+5. obstacle_avoidance_sequence()
+   INPUT: None
+   OUTPUT: None
+   SUMMARY: Executes 3-attempt obstacle avoidance by backing up and checking left/right paths
+
+6. execute_movements()
+   INPUT: None
+   OUTPUT: None (continuous loop)
+   SUMMARY: Processes movement commands from queue, executes sequences, maintains default forward motion
+
+7. start_automation()
+   INPUT: None
+   OUTPUT: None
+   SUMMARY: Activates automated movement mode and begins forward motion
+
+8. pause_automation()
+   INPUT: None
+   OUTPUT: None
+   SUMMARY: Temporarily halts automation without stopping threads
+
+9. resume_automation()
+   INPUT: None
+   OUTPUT: None
+   SUMMARY: Restarts automation after pause
+
+10. stop_automation()
+    INPUT: None
+    OUTPUT: None
+    SUMMARY: Completely stops automation and clears command queue
+
+11. check_vertical_path()
+    INPUT: None
+    OUTPUT: Boolean (True if vertical path detected, False otherwise)
+    SUMMARY: Captures frame and checks for valid vertical line paths using Processing module
+
+12. horizontal_line_sequence()
+    INPUT: None
+    OUTPUT: None
+    SUMMARY: Executes turning sequence when horizontal line detected, checks left/right for vertical paths
+
+13. post_direction(direction)
+    INPUT: direction (string: 'forward', 'backward', 'left', 'right', 'stop')
+    OUTPUT: None
+    SUMMARY: Sends movement command to robot API and manages command logging
+
+14. clear_queue()
+    INPUT: None
+    OUTPUT: None
+    SUMMARY: Empties all pending commands from the movement queue
+
+15. stop_threads()
+    INPUT: None
+    OUTPUT: None
+    SUMMARY: Terminates all threads and stops automation system
+"""
+
 import threading
 from tkinter import *
 import requests
@@ -12,6 +91,7 @@ from queue import Queue
 url = 'http://192.168.240.25:5000/'
 
 class Automation:
+    # Initialize automation system with UI elements and threading components
     def __init__(self, stream_elem=None, overlay_elem=None):
         # UI elements
         self.stream_elem = stream_elem
@@ -29,8 +109,8 @@ class Automation:
         self.last_command = None
         self.sequence_start_time = None
 
+    # Start video processing and movement execution threads
     def start_threads(self):
-        """Start vision processing and movement execution threads"""
         # Clear any existing state
         self.stop_event.clear()
         self.pause_event.clear()
@@ -51,6 +131,7 @@ class Automation:
 
         return video_thread, movement_thread
 
+    # Query robot API to check for obstacle detection
     def check_obstacles(self):
         try:
             response = requests.get(url + 'obstacle')
@@ -60,9 +141,8 @@ class Automation:
             print(f'error checking obstacles: {e}')
             return False
 
-
+    # Continuously process video stream and detect features for automation
     def update_vid_stream(self):
-        """Process video stream and detect features"""
         while not self.stop_event.is_set():
             try:
                 # Get frame from API
@@ -111,7 +191,6 @@ class Automation:
                     time.sleep(0.01)
                     continue
 
-
                 # Process frame using Processing.apply_overlay
                 # This is the key connection between Automation.py and Processing.py
                 overlay, line_type = Processing.apply_overlay(stream, self.movement_queue)
@@ -149,14 +228,8 @@ class Automation:
                 print(f'Error in video stream: {e}')
                 time.sleep(0.01)
 
+    # Execute 3-attempt obstacle avoidance by backing up and checking left/right paths
     def obstacle_avoidance_sequence(self):
-        """
-        Execute obstacle avoidance sequence:
-        1. Move backward a small increment
-        2. Check paths by turning left and right
-        3. Repeat up to 3 times if no path found
-        4. Stop completely if no viable path
-        """
         attempts = 0
         path_found = False
 
@@ -222,8 +295,8 @@ class Automation:
             if self.automation_active:
                 self.post_direction('forward')
 
+    # Process movement commands from queue and execute sequences
     def execute_movements(self):
-        """Execute movement commands from the queue"""
         last_command_time = time.time()
         last_direction = None
 
@@ -285,36 +358,36 @@ class Automation:
                 print(f'Error in movement automation: {e}')
                 time.sleep(0.01)
 
+    # Activate automated movement mode and begin forward motion
     def start_automation(self):
-        """Start automated movement"""
         print("Starting automation...")
         self.automation_active = True
         self.post_direction('forward')
         self.line_type_detected = None
         self.pause_event.clear()
 
+    # Temporarily halt automation without stopping threads
     def pause_automation(self):
-        """Pause automation without stopping threads"""
         print("Pausing automation...")
         self.pause_event.set()
         self.post_direction('stop')
 
+    # Restart automation after pause
     def resume_automation(self):
-        """Resume automation after pausing"""
         print("Resuming automation...")
         self.pause_event.clear()
         if self.automation_active:
             self.post_direction('forward')
 
+    # Completely stop automation and clear command queue
     def stop_automation(self):
-        """Stop automation and clear queue"""
         print("Stopping automation...")
         self.automation_active = False
         self.clear_queue()
         self.post_direction('stop')
 
+    # Capture frame and check for valid vertical line paths
     def check_vertical_path(self):
-        """Check if there's a valid vertical line in current view"""
         try:
             # Get frame from API
             response = requests.get(url + 'vidstream')
@@ -345,14 +418,8 @@ class Automation:
             print(f'Error checking vertical path: {e}')
             return False
 
+    # Execute turning sequence when horizontal line detected, check left/right for vertical paths
     def horizontal_line_sequence(self):
-        """
-        Execute the horizontal line sequence with path detection:
-        1. Stop and move forward a bit
-        2. Turn left and check for vertical path
-        3. If no path on left, turn right and check
-        4. If no path on right, center and continue
-        """
         # Stop movement
         self.post_direction('stop')
         time.sleep(0.3)
@@ -420,8 +487,8 @@ class Automation:
         if self.automation_active:
             self.post_direction('forward')
 
+    # Send movement command to robot API and manage command logging
     def post_direction(self, direction):
-        """Send movement command to the robot API"""
         try:
             # Only log if direction changed
             if self.last_command != direction:
@@ -440,8 +507,8 @@ class Automation:
         except Exception as e:
             print(f'Error posting to API: {e}')
 
+    # Empty all pending commands from the movement queue
     def clear_queue(self):
-        """Clear all pending commands from the queue"""
         print("Clearing command queue...")
         while not self.movement_queue.empty():
             try:
@@ -452,8 +519,9 @@ class Automation:
                 break
         print('Queue cleared')
 
+    # Terminate all threads and stop automation system
     def stop_threads(self):
-        """Stop all threads and automation"""
         print("Stopping all threads...")
         self.stop_automation()
         self.stop_event.set()
+
