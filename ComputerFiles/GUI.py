@@ -1,3 +1,66 @@
+"""
+FUNCTIONS:
+1. __init__(root)
+   INPUT: root (Tkinter root window object)
+   OUTPUT: Initialized GUI object
+   SUMMARY: Initializes main GUI window, database object, and launches login page
+
+2. setup_login_page()
+   INPUT: None
+   OUTPUT: None
+   SUMMARY: Creates login interface with username/password fields and login/create account buttons
+
+3. login()
+   INPUT: None (uses self.user_entry_text and self.pw_entry_text)
+   OUTPUT: None
+   SUMMARY: Validates user credentials against database and launches robot GUI on success
+
+4. create_acc()
+   INPUT: None (uses self.user_entry_text and self.pw_entry_text)
+   OUTPUT: None
+   SUMMARY: Creates new user account in database if username doesn't already exist
+
+5. post_direction(direction)
+   INPUT: direction (string: movement command)
+   OUTPUT: None
+   SUMMARY: Sends movement command to robot API and logs the action
+
+6. play_button()
+   INPUT: None
+   OUTPUT: None
+   SUMMARY: Initializes automation system and starts video/movement threads
+
+7. stop_button_handler()
+   INPUT: None
+   OUTPUT: None
+   SUMMARY: Stops automation threads and sends stop command to robot
+
+8. create_robot_gui()
+   INPUT: None
+   OUTPUT: None
+   SUMMARY: Creates main robot control interface with video streams, control buttons, and logging
+
+9. logging(direction)
+   INPUT: direction (string: movement command)
+   OUTPUT: None
+   SUMMARY: Retrieves timestamp from API, logs command to file and text area
+
+10. stop_video()
+    INPUT: None
+    OUTPUT: None
+    SUMMARY: Sets video pause flag to stop video processing
+
+11. open_log_file()
+    INPUT: None
+    OUTPUT: None
+    SUMMARY: Opens system log file in default system application
+
+12. launch_guis() [static method]
+    INPUT: None
+    OUTPUT: None
+    SUMMARY: Creates Tkinter root window and starts main GUI application loop
+"""
+
 from tkinter import *
 from tkinter.scrolledtext import *
 from tkinter.font import Font
@@ -17,18 +80,8 @@ import Automation
 
 url = 'http://192.168.240.22:5000/'
 
-"""
-this class is used to initialize the graphical user interface (GUI) which contains
-the elements of the login page and the control panel. it also adds functionality
-to the buttons. 
-"""
-
 class GUI:
-    # upon creating an instance of the guiwindows
-    # class, initializes the main gui window, a 
-    # database object for managing and accessing
-    # credentials, and variables required for 
-    # ideo streaming, and the login page is launched. 
+    # Initialize main GUI window, database object, and launch login page
     def __init__(self, root):
         self.root = root
         self.root.title('user login')
@@ -37,11 +90,7 @@ class GUI:
  
         self.setup_login_page()
 
-    # creates the text labels and text entry 
-    # fields for username and password input, 
-    # as well as buttons for login and account 
-    # creation. uses the sqlite3 database from 
-    # the database object to manage and access creds 
+    # Create login interface with username/password fields and login/create account buttons
     def setup_login_page(self):
         self.user_entry_text = StringVar()
         self.pw_entry_text = StringVar()
@@ -70,11 +119,7 @@ class GUI:
         create_acc_button = Button(buttons_panel, text='create account', command=self.create_acc) 
         create_acc_button.grid(row=1, column=2, ipadx=3, ipady=2, padx=5, pady=5)
 
-    
-    # called upon clicking the login button 
-    # inside the gui. checks if the entered 
-    # username and password match the creds 
-    # stored in the database
+    # Validate user credentials against database and launch robot GUI on success
     def login(self):
         username = self.user_entry_text.get()
         password = self.pw_entry_text.get()
@@ -96,10 +141,7 @@ class GUI:
         messagebox.showinfo(message=f'login successful! welcome {username}')
         self.create_robot_gui()
 
-    
-    # insert the entered credentials into the 
-    # database if the username does not already 
-    # exist. 
+    # Create new user account in database if username doesn't already exist
     def create_acc(self):
         username = self.user_entry_text.get()
         password = self.pw_entry_text.get()
@@ -115,6 +157,7 @@ class GUI:
         self.database.insert_user(username, password)
         messagebox.showinfo(message=f'account creation successful!')
 
+    # Send movement command to robot API and log the action
     def post_direction(self, direction):
         try:
             endpoint = url + 'moving'
@@ -125,10 +168,12 @@ class GUI:
         except:
             print('something happened; error')
 
+    # Initialize automation system and start video/movement threads
     def play_button(self):
         self.automation = Automation.Automation(self.stream_elem, self.overlay_elem)
         self.video_thread, self.movement_thread = self.automation.start_threads()
 
+    # Stop automation threads and send stop command to robot
     def stop_button_handler(self):
         if hasattr(self, 'automation'):
             self.automation.stop_event.set()
@@ -136,9 +181,8 @@ class GUI:
             self.post_direction('stop')
         else:
             self.post_direction('stop')
-    # creates a new tkinter window, and sets up 
-    # the frames for video streaming and overlay, 
-    # as well as control buttons and log panel. 
+
+    # Create main robot control interface with video streams, control buttons, and logging
     def create_robot_gui(self):
         robot_gui = Toplevel()
         robot_gui.title('robot gui')
@@ -216,6 +260,7 @@ class GUI:
         self.text_area.see(END)
         self.text_area.config(state='disabled')
 
+    # Retrieve timestamp from API, log command to file and text area
     def logging(self, direction):
         try:
             endpoint = url + 'logging'
@@ -231,17 +276,21 @@ class GUI:
         except:
             print('an error occured sorry!')
 
+    # Set video pause flag to stop video processing
     def stop_video(self):
         self.video_paused = True
 
+    # Open system log file in default system application
     def open_log_file(self):
         file_path = 'system_log.txt'
         if not os.path.exists(file_path):
             open(file_path, 'w').close()
         subprocess.call(('open', file_path))
 
+    # Create Tkinter root window and start main GUI application loop
     @staticmethod
     def launch_guis():
         root = Tk() 
         app = GUI(root)
         root.mainloop()
+
