@@ -35,7 +35,7 @@ import requests
 import time
 
 # Set API endpoint URL for video stream transmission
-api_url = "http://192.168.240.22:5000/vidstream"
+api_url = "http://192.168.240.25:5000/vidstream"
 
 # Initialize video capture from default camera
 cap = cv2.VideoCapture(0)
