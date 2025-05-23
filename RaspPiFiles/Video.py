@@ -1,6 +1,4 @@
 """
-PSEUDOCODE HEADER - Video.py
-
 This file contains the main video capture and streaming loop rather than discrete functions.
 The script performs the following operations:
 
