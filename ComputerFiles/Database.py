@@ -1,36 +1,60 @@
+"""
+FUNCTIONS:
+1. __init__()
+   INPUT: None
+   OUTPUT: Initialized Database object
+   SUMMARY: Initializes database by creating database file and users table if they don't exist
+
+2. connect()
+   INPUT: None
+   OUTPUT: conn (connection object), cursor (cursor object)
+   SUMMARY: Establishes connection to SQLite database and returns connection and cursor objects
+
+3. commit_n_close(conn)
+   INPUT: conn (SQLite connection object)
+   OUTPUT: None
+   SUMMARY: Commits pending changes to database and safely closes the connection
+
+4. create_db()
+   INPUT: None
+   OUTPUT: None
+   SUMMARY: Creates users table with id, username, and password columns if table doesn't exist
+
+5. insert_user(username, password)
+   INPUT: username (string), password (string)
+   OUTPUT: None
+   SUMMARY: Inserts new user credentials into the users table
+
+6. user_exists(username)
+   INPUT: username (string)
+   OUTPUT: Boolean (True if user exists, False otherwise)
+   SUMMARY: Checks if a user with the given username already exists in the database
+
+7. get_password(username)
+   INPUT: username (string)
+   OUTPUT: password (string) or None if user doesn't exist
+   SUMMARY: Retrieves the password for a given username from the database
+"""
+
 import sqlite3
 
-"""
-set up a class for initializing, accessing, and editing
-an sqlite3 database for managing the credentials of 
-the login interface of the program.
-"""
 class Database:
-    # initializes the database upon creating an instance
-    # of the database class 
+    # Initialize database by creating database file and users table if they don't exist
     def __init__(self):
         self.create_db() 
 
-    # connects to the sqlite3 database, returns the 
-    # connection object and the cursor for executing 
-    # further queries. this function must be called
-    # every time before accessing and modifying the
-    # database 
+    # Establish connection to SQLite database and return connection and cursor objects
     def connect(self):
         conn = sqlite3.connect('userinfo.db')
         cursor = conn.cursor()
         return conn, cursor
 
-    # commits changes to the database and closes the 
-    # connection, ensuring changes are saved and that
-    # the connection is safely closed each time 
+    # Commit pending changes to database and safely close the connection
     def commit_n_close(self, conn):
         conn.commit()
         conn.close() 
 
-    # creates the database if it does not already 
-    # exist. called when creating an instance of the 
-    # database class 
+    # Create users table with id, username, and password columns if table doesn't exist
     def create_db(self):
         conn, cursor = self.connect()
         cursor.execute('''
@@ -42,18 +66,13 @@ class Database:
         ''')
         self.commit_n_close(conn)
 
-    # inserts a new set of user credentials into
-    # the users table. takes in the inputs username
-    # and password to insert into the database
+    # Insert new user credentials into the users table
     def insert_user(self, username, password):
         conn, cursor = self.connect()
         cursor.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, password))
         self.commit_n_close(conn)
 
-    # takes in the input username, then checks if 
-    # a user in the database with the given username 
-    # already exists in the database. if the user 
-    # already exists, reutrn True. otherwise, False
+    # Check if a user with the given username already exists in the database
     def user_exists(self, username):
         conn, cursor = self.connect()
         cursor.execute('SELECT id FROM users WHERE username = ?', (username, ))
@@ -61,10 +80,7 @@ class Database:
         self.commit_n_close(conn)
         return result is not None
 
-    # takes in the input username, then returns 
-    # the password for the given username. If the 
-    # user does not exist, return None. otherwise, 
-    # return the password
+    # Retrieve the password for a given username from the database
     def get_password(self, username):
         conn, cursor = self.connect()
         cursor.execute('SELECT password FROM users WHERE username = ?', (username, ))
